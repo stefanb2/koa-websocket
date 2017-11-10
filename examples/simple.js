@@ -1,22 +1,18 @@
-const koa = require('koa');
+const Koa = require('koa');
 const route = require('koa-route');
-const websockify = require('..');
+const websockify = require('../');
 
-const app = websockify(koa());
+const app = new Koa();
 
-// Note it's app.ws.use and not app.use
-app.ws.use(route.all('/test/:id', function* all(next) {
-  // `this` is the regular koa context created from the `ws`
-  // onConnection `socket.upgradeReq` object.
-  // The websocket is added to the context on `this.websocket`.
-  this.websocket.send('Hello World');
-  this.websocket.on('message', (message) => {
-    // Do something with the message from client
+app.use(route.all('/test/:id', (ctx) => {
+  // `ctx` is the regular koa context created from the `ws` onConnection
+  // `request` object.  the websocket is added to the context on
+  // `ctx.websocket`.
+  ctx.websocket.send('Hello World');
+  ctx.websocket.on('message', (message) => {
     console.log(message);
   });
-  // Yielding `next` will pass the context (this) on to the next ws middleware
-  yield next;
+  delete ctx.websocket;
 }));
 
-
-app.listen(3000);
+websockify(app)._webSocketsListen(app.listen(3000));
