@@ -1,5 +1,6 @@
 const assert = require('assert');
 const fs = require('fs');
+const https = require('https');
 const WebSocket = require('ws');
 const Koa = require('koa');
 const route = require('koa-route');
@@ -7,39 +8,37 @@ const route = require('koa-route');
 const koaws = require('..');
 
 describe('should route ws messages seperately', () => {
-  const app = koaws(new Koa());
+  const app = new Koa();
 
-  app.ws.use((ctx, next) => {
-    ctx.websocket.on('message', (message) => {
+  app.use(route.all('/abc', (ctx) => {
+    ctx.websocket.on('message', function _(message) {
+      this.send(message);
+    });
+    delete ctx.websocket;
+  }));
+
+  app.use(route.all('/def', (ctx) => {
+    ctx.websocket.on('message', function _(message) {
+      this.send(message);
+    });
+    delete ctx.websocket;
+  }));
+
+  app.use((ctx, next) => {
+    ctx.websocket.on('message', function _(message) {
       if (message === '123') {
-        ctx.websocket.send(message);
+        this.send(message);
       }
     });
+    delete ctx.websocket;
     return next();
   });
-
-  app.ws.use(route.all('/abc', (ctx) => {
-    ctx.websocket.on('message', (message) => {
-      ctx.websocket.send(message);
-    });
-  }));
-
-  app.ws.use(route.all('/abc', (ctx) => {
-    ctx.websocket.on('message', (message) => {
-      ctx.websocket.send(message);
-    });
-  }));
-
-  app.ws.use(route.all('/def', (ctx) => {
-    ctx.websocket.on('message', (message) => {
-      ctx.websocket.send(message);
-    });
-  }));
 
   let server = null;
 
   before((done) => {
     server = app.listen(done);
+    koaws(app)._webSocketsListen(server);
   });
 
   after((done) => {
@@ -96,7 +95,8 @@ describe('should route ws messages seperately', () => {
 });
 
 describe('should support custom ws server options', () => {
-  const app = koaws(new Koa(), {
+  const app = new Koa();
+  const websockified = koaws(app, {
     handleProtocols(protocols) {
       if (protocols.indexOf('bad_protocol') !== -1) { return false; }
       return protocols.pop();
@@ -107,6 +107,7 @@ describe('should support custom ws server options', () => {
 
   before((done) => {
     server = app.listen(done);
+    websockified._webSocketsListen(server);
   });
 
   after((done) => {
@@ -127,15 +128,16 @@ describe('should support custom http server options', () => {
   // The cert is self-signed.
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-  const secureApp = koaws(new Koa(), {}, {
+  const secureApp = new Koa();
+  const websockified = koaws(secureApp);
+  const server = https.createServer({
     key: fs.readFileSync('./test/key.pem'),
     cert: fs.readFileSync('./test/cert.pem'),
-  });
-
-  let server = null;
+  }, secureApp.callback());
 
   before((done) => {
-    server = secureApp.listen(done);
+    websockified._webSocketsListen(server);
+    server.listen(done);
   });
 
   after((done) => {
